@@ -11,6 +11,7 @@ import multiprocessing
 import random
 import time
 
+from algo import MultipleCopy, Rastrigin
 
 from tqdm import tqdm
 
@@ -23,31 +24,42 @@ def rastrigin_function(x, A):
 def generate_random(upper, lower, shape):
     return lower + torch.rand(shape) * (upper - lower)
 
-def run_optimize(N, objective, optimizer, early_stop_norm=1e-4, verbose=False):
-    x_traj = []
-    
-    x = generate_random(-4, 4, N)
-    if verbose: print("Initial condition:", x)
-    x.requires_grad = True
 
-    optim = optimizer([x])
+def run_optimize(model_class, optimizer_class, minimal_step=1e-4, verbose=False):
+    x_traj = []
+    y_traj = []
+
+    model = model_class()
+    optimizer = optimizer_class(model.parameters())
+
 
     # Optimize the objective function
-    for _ in range(int(1e4)):
-        # Wait, then I can just sum all in objective, because why not
-        y = torch.sum(objective(x)) # summation doesn't affect the gradient
-        optim.zero_grad()
-        y.backward()
-        
-        # If the step is small, early stop
-        if x_traj and np.linalg.norm(x.detach().numpy() - x_traj[-1]) < early_stop_norm:
-            if verbose: print("Stopping gradient:", x.grad)
-            break
+    for _ in range(int(1e6)):
+        # with torch.profiler.profile(record_shapes=True) as prof:
+            # This is a numpy matrix of shape N x m
+            x = model.x.detach().numpy().copy()
+            if x_traj:
+                steps = [np.linalg.norm(x[i]-x_traj[-1][i]) for i in range(len(x))]
+                if np.max(steps) < minimal_step:
+                    if verbose: print("The maximum step is:", np.max(steps), "\nQuit early")
+                    break
+            x_traj.append(x)
+
+
+            # This is a torch tensor of length N
+            y = model()
+            y_traj.append([yi.detach().numpy().copy() for yi in y])
+
+            loss = torch.sum(y)
+            optimizer.zero_grad()
+            loss.backward()
             
-        x_traj.append(x.detach().numpy().copy())
-        optim.step()
-    
-    return x_traj
+            model.peds_step()
+            optimizer.step()
+        # print(prof.key_averages().table(sort_by="cpu_time_total"))
+        # exit(0)
+
+    return x_traj, y_traj
 
 def set_seed(seed_value):
     random.seed(seed_value)
@@ -60,38 +72,46 @@ def set_seed(seed_value):
         torch.backends.cudnn.benchmark = False
 
 
+
+
 def experiment(
-    N,
-    objective,
-    optimizer,
+    model_class,
+    optimizer_class,
     sample_size,
     optimum,
-    tol,
+    tol=0.1,
     seed_value=42,
 ):
     start_time = time.time()
 
     set_seed(seed_value)
-    
-    x_last = []
-    losses = []
 
     # The number of threads is equalt to the number of cores
     num_cores = multiprocessing.cpu_count()
 
-    x_trajs = Parallel(n_jobs=num_cores)(delayed(run_optimize)(N, objective, optimizer) for _ in range(sample_size))
+    results = Parallel(n_jobs=num_cores) \
+        (delayed(run_optimize)(model_class, optimizer_class) for _ in range(sample_size))
     
-    x_last = [traj[-1] for traj in x_trajs]
-    losses = [objective(torch.tensor(x)) for x in x_last]
+    # results = [(run_optimize)(model_class, optimizer_class)]
 
-    succ = [np.linalg.norm(x_end - optimum) < tol for x_end in x_last]
+    list_x_traj = [res[0] for res in results]
+    list_y_traj = [res[1] for res in results]
+
+    losses = [y_traj[-1] for y_traj in list_y_traj]
+    mean_loss = np.mean(losses)
+
+    last_x = [x_traj[-1] for x_traj in list_x_traj]
+    num_succ = [np.min(np.linalg.norm(x_end - optimum, axis=1)) < tol for x_end in last_x]
 
     return {
-        'x_trajs': x_trajs,
-        'x_last': x_last,
-        'losses': losses,
-        'success_rate': sum(succ)/sample_size,
-        'seed_value': seed_value,
+        # 'list_x_traj': list_x_traj,
+        # 'list_y_traj': list_y_traj,
+        'last_x': last_x,
+        # 'losses': losses,
+        'mean_loss': mean_loss,
+        # 'num_succ': num_succ,
+        'success_rate': sum(num_succ)/sample_size,
+        # 'seed_value': seed_value,
         'total_time': time.time() - start_time
     }
 

@@ -5,45 +5,39 @@ import matplotlib.pyplot as plt
 from functools import partial
 from matplotlib.animation import FuncAnimation, writers
 
+from torch.optim import SGD
+
 from tqdm import tqdm
 import json
 from datetime import datetime
 
 from utils import *
-from algo import PEDS_SGD
+from algo import *
 
 
-rast1 = lambda x: rastrigin_function(x, 3)
+N = 5
+m = 2
+lr = 1e-4
+alpha = 1
+sample_size=int(1e2)
+
+# model_class = partial(Rastrigin,m=m, A=3)
+# optimizer_class = partial(SGD, lr=lr)
+
+# mc = MultipleCopy(model_class, optimizer_class, N)
+
+# x_traj, y_traj = run_optimize(mc, verbose=True)
 
 
-def run_optimize(N, m, objective, optimizer, early_stop_norm=1e-4, verbose=False):
-    x_traj = []
-    
-    x = generate_random(-4, 4, (N,m))
-    if verbose: print("Initial condition:", x)
-    x.requires_grad = True
+# gen_mc = lambda : MultipleCopy(model_class, optimizer_class, N)
 
-    optim = optimizer([x])
+model_class = partial(Rastrigin, N=N, m=m, A=3, alpha=alpha)
+optimizer_class = partial(SGD, lr=lr)
 
-    # Optimize the objective function
-    for _ in range(int(1e4)):
-        y = torch.sum(objective(x)) # summation doesn't affect the gradient
-        optim.zero_grad()
-        y.backward()
-        
-        # If the step is small, early stop
-        if x_traj and np.linalg.norm(x.detach().numpy() - x_traj[-1]) < early_stop_norm:
-            if verbose: print("Stopping gradient:", x.grad)
-            break
-            
-        x_traj.append(x.detach().numpy().copy())
-        optim.step()
-    
-    return x_traj
+result = experiment(model_class, optimizer_class, sample_size, np.array([0 for _ in range(m)]))
 
-optimizer = partial(torch.optim.SGD, lr=1e-4)
+print(result['success_rate'])
+print(np.mean(result['losses']))
 
-# N = m = 1
-result = run_optimize(1, 2, rast1, optimizer)
-# result = experiment(1, rast1, optimizer, int(1e4), 0, 0.1)
-
+from IPython import embed
+embed() or exit(0)
