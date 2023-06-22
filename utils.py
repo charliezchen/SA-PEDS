@@ -15,6 +15,34 @@ from algo import MultipleCopy, Rastrigin
 
 from tqdm import tqdm
 
+import argparse
+
+def parse_args():
+    parser = argparse.ArgumentParser(description='Optimize using PEDS method')
+
+    # Add arguments to the parser
+    parser.add_argument('--naive', action='store_true')
+    
+    parser.add_argument('--alpha', type=float, default=1)
+    parser.add_argument('--alpha-inc', type=float, default=0)
+    
+    parser.add_argument('-m', type=int)
+    parser.add_argument('--lower-N', type=int, default=1)
+    parser.add_argument('--upper-N', type=int, help="The largest N to test, inclusively", default=10)
+
+    parser.add_argument('--lr', type=float, default=1e-4)
+    parser.add_argument('--sample-size', '-sz', type=float, default=1e4)
+
+
+    parser.add_argument('-A', type=int, default=3)
+
+    parser.add_argument('--seed', type=int, default=42)
+
+    args = parser.parse_args()
+
+    args.sample_size = int(args.sample_size)
+    return args
+
 # Input should be a torch tensor
 def rastrigin_function(x, A):
     # broadcast over the last dimension
@@ -26,29 +54,31 @@ def generate_random(upper, lower, shape):
 
 
 def run_optimize(model_class, optimizer_class, minimal_step=1e-4, verbose=False):
-    x_traj = []
-    y_traj = []
+    # x_traj = []
+    # y_traj = []
+    last_x, last_y = None, None
 
     model = model_class()
     optimizer = optimizer_class(model.parameters())
 
 
     # Optimize the objective function
-    for _ in range(int(1e6)):
+    for _ in range(int(1e4)):
         # with torch.profiler.profile(record_shapes=True) as prof:
             # This is a numpy matrix of shape N x m
             x = model.x.detach().numpy().copy()
-            if x_traj:
-                steps = [np.linalg.norm(x[i]-x_traj[-1][i]) for i in range(len(x))]
+            if last_x is not None:
+                steps = [np.linalg.norm(x[i]-last_x[i]) for i in range(len(x))]
                 if np.max(steps) < minimal_step:
                     if verbose: print("The maximum step is:", np.max(steps), "\nQuit early")
                     break
-            x_traj.append(x)
+            last_x = x
 
 
             # This is a torch tensor of length N
             y = model()
-            y_traj.append([yi.detach().numpy().copy() for yi in y])
+            last_y = y.detach().numpy().copy()
+            # y_traj.append([yi.detach().numpy().copy() for yi in y])
 
             loss = torch.sum(y)
             optimizer.zero_grad()
@@ -59,7 +89,7 @@ def run_optimize(model_class, optimizer_class, minimal_step=1e-4, verbose=False)
         # print(prof.key_averages().table(sort_by="cpu_time_total"))
         # exit(0)
 
-    return x_traj, y_traj
+    return last_x, last_y
 
 def set_seed(seed_value):
     random.seed(seed_value)
@@ -94,13 +124,13 @@ def experiment(
     
     # results = [(run_optimize)(model_class, optimizer_class)]
 
-    list_x_traj = [res[0] for res in results]
-    list_y_traj = [res[1] for res in results]
+    last_x = [res[0] for res in results]
+    losses = [res[1] for res in results]
 
-    losses = [y_traj[-1] for y_traj in list_y_traj]
+    # losses = [y_traj[-1] for y_traj in list_y_traj]
     mean_loss = np.mean(losses)
 
-    last_x = [x_traj[-1] for x_traj in list_x_traj]
+    # last_x = [x_traj[-1] for x_traj in list_x_traj]
     num_succ = [np.min(np.linalg.norm(x_end - optimum, axis=1)) < tol for x_end in last_x]
 
     return {

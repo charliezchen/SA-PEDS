@@ -9,7 +9,7 @@ from matplotlib.animation import FuncAnimation, writers
 class Rastrigin(nn.Module):
     upper, lower = 2, -2
 
-    def __init__(self, N, m, A, alpha, naive=False):
+    def __init__(self, N, m, A, alpha, alpha_inc, naive=False):
         super(Rastrigin, self).__init__()
         self.x = nn.Parameter(self.lower + torch.rand(N, m) * (self.upper - self.lower))
         self.A = A
@@ -17,6 +17,7 @@ class Rastrigin(nn.Module):
         self.N = N
         self.projector = torch.full((N,N), 1/N)
         self.alpha = alpha
+        self.alpha_inc = alpha_inc
 
         if naive:
             self.projector = torch.eye(N)
@@ -37,7 +38,7 @@ class Rastrigin(nn.Module):
             attraction = self.alpha * torch.matmul((self.I - projector), self.x)
 
             self.x.grad = (projected_grad + attraction)
-        self.alpha += .1
+        self.alpha += self.alpha_inc
     
 
 class MultipleCopy:
