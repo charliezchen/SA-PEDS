@@ -36,12 +36,13 @@ for N in range(args.lower_N, args.upper_N + 1):
     # record['Sample size'] = sample_size
     # record['Alpha'] = alpha
     # record['Projector'] = 'Mean field'
-    # record['Notes'] = "Increase alpha with 0.1 with each step"
+    record['Notes'] = "Increase alpha with 0.1 with each step; move the center of the rastrian function"
     # record['Rastrigin_A'] = A
 
     # naive = record['Optim'] == 'naive'
     model_class = partial(Rastrigin, N=N, m=args.m, A=args.A, 
-                          alpha=args.alpha, alpha_inc=args.alpha_inc, naive=args.naive)
+                          alpha=args.alpha, alpha_inc=args.alpha_inc, 
+                          shift=args.shift, naive=args.naive)
     optimizer_class = partial(SGD, lr=args.lr)
 
     result = experiment(model_class, optimizer_class, 

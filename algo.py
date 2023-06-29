@@ -9,10 +9,11 @@ from matplotlib.animation import FuncAnimation, writers
 class Rastrigin(nn.Module):
     upper, lower = 2, -2
 
-    def __init__(self, N, m, A, alpha, alpha_inc, naive=False):
+    def __init__(self, N, m, A, alpha, alpha_inc, shift=0, naive=False):
         super(Rastrigin, self).__init__()
         self.x = nn.Parameter(self.lower + torch.rand(N, m) * (self.upper - self.lower))
         self.A = A
+        self.shift = shift
 
         self.N = N
         self.projector = torch.full((N,N), 1/N)
@@ -23,18 +24,18 @@ class Rastrigin(nn.Module):
             self.projector = torch.eye(N)
             self.alpha = 0
 
-
         self.I = torch.eye(self.N) 
 
         
     def forward(self):
-        return torch.sum(self.A + self.x ** 2 - self.A * torch.cos(2 * torch.pi * self.x), dim=-1)
+        return torch.sum(self.A + (self.x - self.shift) ** 2 - self.A * torch.cos(2 * torch.pi * (self.x - self.shift)), dim=-1)
     
     def peds_step(self):
         with torch.no_grad():
             # projector = self.projector + 0.1 * torch.randn(self.projector.shape)
             projector = self.projector
             projected_grad = torch.matmul(projector, self.x.grad)
+            # projected_grad = self.x.grad # TODO: Add this as an argument
             attraction = self.alpha * torch.matmul((self.I - projector), self.x)
 
             self.x.grad = (projected_grad + attraction)

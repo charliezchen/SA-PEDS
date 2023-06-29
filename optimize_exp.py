@@ -14,10 +14,12 @@ from datetime import datetime
 from utils import *
 from algo import *
 
+# python3 optimize_exp.py -m 1000 --alpha 1000 --sample-size 100
+# python3 optimize_exp.py -m 1000 --alpha 0 --sample-size 100 --alpha-inc 10
 
 args = parse_args()
 
-N = 3
+N = 100
 # m = 2
 # lr = 1e-4
 # alpha = 1
@@ -38,10 +40,9 @@ model_class = partial(Rastrigin, N=N, m=args.m, A=3,
 optimizer_class = partial(SGD, lr=args.lr)
 
 result = experiment(model_class, optimizer_class, args.sample_size, 
-                    np.array([0 for _ in range(args.m)]))
+                    np.array([0 for _ in range(args.m)]),
+                    save_traj=args.debug, debug=args.debug)
 
 print(result['success_rate'])
 print(np.mean(result['mean_loss']))
 
-from IPython import embed
-embed() or exit(0)

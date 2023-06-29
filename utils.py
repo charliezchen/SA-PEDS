@@ -35,8 +35,11 @@ def parse_args():
 
 
     parser.add_argument('-A', type=int, default=3)
+    parser.add_argument('--shift', type=float, default=0)
 
     parser.add_argument('--seed', type=int, default=42)
+
+    parser.add_argument('--debug', action='store_true')
 
     args = parser.parse_args()
 
@@ -53,9 +56,9 @@ def generate_random(upper, lower, shape):
     return lower + torch.rand(shape) * (upper - lower)
 
 
-def run_optimize(model_class, optimizer_class, minimal_step=1e-4, verbose=False):
-    # x_traj = []
-    # y_traj = []
+def run_optimize(model_class, optimizer_class, minimal_step=1e-4, save_traj = False, verbose=False):
+    x_traj = []
+    y_traj = []
     last_x, last_y = None, None
 
     model = model_class()
@@ -63,7 +66,7 @@ def run_optimize(model_class, optimizer_class, minimal_step=1e-4, verbose=False)
 
 
     # Optimize the objective function
-    for _ in range(int(1e4)):
+    for _ in range(int(1e10)):
         # with torch.profiler.profile(record_shapes=True) as prof:
             # This is a numpy matrix of shape N x m
             x = model.x.detach().numpy().copy()
@@ -86,10 +89,15 @@ def run_optimize(model_class, optimizer_class, minimal_step=1e-4, verbose=False)
             
             model.peds_step()
             optimizer.step()
+
+            if save_traj:
+                x_traj.append(last_x)
+                y_traj.append(model.x.grad.detach().numpy().copy())
+
         # print(prof.key_averages().table(sort_by="cpu_time_total"))
         # exit(0)
 
-    return last_x, last_y
+    return last_x, last_y, x_traj, y_traj
 
 def set_seed(seed_value):
     random.seed(seed_value)
@@ -110,22 +118,43 @@ def experiment(
     sample_size,
     optimum,
     tol=0.1,
+    save_traj=False,
     seed_value=42,
+    debug=False
 ):
     start_time = time.time()
 
     set_seed(seed_value)
 
     # The number of threads is equalt to the number of cores
-    num_cores = multiprocessing.cpu_count()
+    if not debug:
+        num_cores = multiprocessing.cpu_count()
+    else:
+        num_cores = 1
 
-    results = Parallel(n_jobs=num_cores) \
-        (delayed(run_optimize)(model_class, optimizer_class) for _ in range(sample_size))
     
+    results = Parallel(n_jobs=num_cores) \
+        (delayed(run_optimize)(model_class, optimizer_class, save_traj=save_traj) for _ in range(sample_size))
+
+
     # results = [(run_optimize)(model_class, optimizer_class)]
 
     last_x = [res[0] for res in results]
     losses = [res[1] for res in results]
+
+    # find one non-converging trajectory?
+    if save_traj:
+        y_traj = results[0][3]
+        y_traj = [np.linalg.norm(traj, axis=1) for traj in y_traj]
+        plt.plot(y_traj)
+        plt.show()
+        from IPython import embed
+        embed() or exit(0)
+        for res in results:
+            x_traj = res[2]
+            if len(x_traj) > 1e4:
+                from IPython import embed
+                embed() or exit(0)
 
     # losses = [y_traj[-1] for y_traj in list_y_traj]
     mean_loss = np.mean(losses)
