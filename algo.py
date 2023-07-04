@@ -6,15 +6,15 @@ from functools import partial
 from matplotlib.animation import FuncAnimation, writers
 
 
-class Rastrigin(nn.Module):
+class PEDS_Model(nn.Module):
     upper, lower = 2, -2
 
-    def __init__(self, N, m, A, alpha, alpha_inc, shift=0, naive=False):
-        super(Rastrigin, self).__init__()
+    def __init__(self, N, m, alpha, alpha_inc, shift=0, independent=False, naive=False):
+        super(PEDS_Model, self).__init__()
         self.x = nn.Parameter(self.lower + torch.rand(N, m) * (self.upper - self.lower))
-        self.A = A
         self.shift = shift
 
+        self.m = m
         self.N = N
         self.projector = torch.full((N,N), 1/N)
         self.alpha = alpha
@@ -24,101 +24,50 @@ class Rastrigin(nn.Module):
             self.projector = torch.eye(N)
             self.alpha = 0
 
+        self.independent = independent
         self.I = torch.eye(self.N) 
 
         
     def forward(self):
-        return torch.sum(self.A + (self.x - self.shift) ** 2 - self.A * torch.cos(2 * torch.pi * (self.x - self.shift)), dim=-1)
+        raise NotImplemented
     
     def peds_step(self):
         with torch.no_grad():
             # projector = self.projector + 0.1 * torch.randn(self.projector.shape)
             projector = self.projector
-            projected_grad = torch.matmul(projector, self.x.grad)
-            # projected_grad = self.x.grad # TODO: Add this as an argument
-            attraction = self.alpha * torch.matmul((self.I - projector), self.x)
+            if self.independent:
+                projected_grad = self.x.grad
+            else:
+                projected_grad = torch.matmul(projector, self.x.grad)
+
+            mean = torch.mean(self.x, dim=0)
+            attraction = self.alpha * (self.x - mean)
+            # attraction = self.alpha * torch.matmul((self.I - projector), self.x)
 
             self.x.grad = (projected_grad + attraction)
         self.alpha += self.alpha_inc
-    
 
-class MultipleCopy:
-
-    def __init__(self, model_class, optimizer_class, N):
-        self.models = []
-        self.optimizers = []
-        # PEDS is disabled essentially
-        # self.projector = torch.eye(N)
-        
-
-        for _ in range(N):
-            model = model_class()
-            self.models.append(model)
-            self.optimizers.append(optimizer_class(model.parameters()))
-    
-    def forward(self):
-        y = []
-        for model in self.models:
-            y.append(model.forward())
-        return y
-    def get_x(self):
-        x = []
-        for model in self.models:
-            x.append(model.x.detach().numpy().copy())
-        
-        return x
-    
-    def step(self):
-        for optimizer in self.optimizers:
-            optimizer.step()
-    
-    def peds_step(self):
-        
-        # This is a matrix of shape N x m
-        grad = torch.stack([m.x.grad.detach() for m in self.models])
-        projected_grad = torch.matmul(self.projector, grad)
-        # for model in self.models:
-        #     model.x.grad.set_(projected_grad[])
-        
-        param = torch.stack([m.x.data.detach() for m in self.models])
-        attraction = -self.alpha * torch.matmul((torch.eye(self.N) - self.projector), param)
-
-        sum_of_grad = projected_grad + attraction
-
-        for index in range(self.N):
-            self.models[index].x.grad.set_(sum_of_grad[index, :])
-        
-        self.step()
-        # from IPython import embed
-        # embed() or exit(0)
-
-
-    def zero_grad(self):
-        for optimizer in self.optimizers:
-            optimizer.zero_grad()
-    
-
-
-
-
-
-class PEDS_SGD(torch.optim.SGD):
+class Rastrigin(PEDS_Model):
     def __init__(self, *args, **kwargs):
-        if 'alpha' in kwargs:
-            self.alpha = kwargs['alpha']
-            del kwargs['alpha']
-        else:
-            self.alpha = 1
-        super(PEDS_SGD, self).__init__(*args, **kwargs)
-        
-    
-    def step(self):
-        for group in self.param_groups:
-            for param in group['params']:
-                param.grad.fill_(torch.mean(param.grad))
-                # param.grad.fill_(0)
-                N = param.numel()
-                Omega1 = torch.full((N, N), 1.0/N)
-                param.grad.add_(torch.matmul(self.alpha * (torch.eye(N) - Omega1), param))
-        super(PEDS_SGD, self).step()
+        self.A = 3 # TODO: pass in arguments
 
+        super(Rastrigin, self).__init__(*args, **kwargs)
+    def forward(self):
+        return torch.sum(self.A + (self.x - self.shift) ** 2 - self.A * torch.cos(2 * torch.pi * (self.x - self.shift)), dim=-1)
+
+class Ackley(PEDS_Model):
+    def __init__(self, *args, **kwargs):
+        self.a, self.b, self.c = 1, 1, 2*torch.pi # TODO: pass in arguments
+
+        super(Ackley, self).__init__(*args, **kwargs)
+
+    def forward(self):
+        term1 = -self.a * torch.exp(-self.b * torch.sqrt(torch.mean(self.x**2, dim=1)))
+        term2 = -torch.exp(torch.mean(torch.cos(self.c * self.x), dim=1))
+        y = term1 + term2 + self.a + torch.e 
+        if torch.isnan(y).any():
+            print("There is nan in the function output. Check it!")
+            exit(0)
+        return y
+
+        

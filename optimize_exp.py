@@ -19,24 +19,25 @@ from algo import *
 
 args = parse_args()
 
-N = 100
-# m = 2
-# lr = 1e-4
-# alpha = 1
-# sample_size=int(1e2)
-
-# model_class = partial(Rastrigin,m=m, A=3)
-# optimizer_class = partial(SGD, lr=lr)
-
-# mc = MultipleCopy(model_class, optimizer_class, N)
-
-# x_traj, y_traj = run_optimize(mc, verbose=True)
+N = 2
 
 
-# gen_mc = lambda : MultipleCopy(model_class, optimizer_class, N)
+test_function_class = eval(args.test_function)
+model_class = partial(test_function_class, N=N, m=args.m, 
+                      alpha=args.alpha, alpha_inc=args.alpha_inc,
+                      independent=args.independent)
 
-model_class = partial(Rastrigin, N=N, m=args.m, A=3, 
-                      alpha=args.alpha, alpha_inc=args.alpha_inc)
+
+# def f(x):
+#     return -np.exp(-x**2) - np.exp(np.cos(2*np.pi*x)) + 1 + np.e
+
+# X = np.linspace(-2, 2, 100)
+# y = [f(x) for x in X]
+# plt.plot(X,y)
+# plt.show()
+
+# exit(0)
+
 optimizer_class = partial(SGD, lr=args.lr)
 
 result = experiment(model_class, optimizer_class, args.sample_size, 

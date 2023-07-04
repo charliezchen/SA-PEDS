@@ -13,52 +13,112 @@ import pickle
 from datetime import datetime
 
 from utils import *
-from algo import PEDS_SGD
 
+from algo import *
+
+import os
+import yaml
+
+def parse_args():
+    parser = argparse.ArgumentParser(description='Optimize using PEDS method')
+
+    parser.add_argument("--yaml_config_path", type=str, required=True)
+    parser.add_argument("--independent", action='store_true')
+
+    parser.add_argument("--test_function", type=str, required=True)
+    parser.add_argument("--folder", type=str, required=True)
+    parser.add_argument("--m", type=int)
+
+    return parser.parse_args()
 
 args = parse_args()
 
+if not os.path.exists(args.folder):
+    os.mkdir(args.folder)
 
-all_records = []
+with open(args.yaml_config_path, "r") as infile:
+    yaml_config = yaml.full_load(infile)
 
-# Format current date and time into a string
-now = datetime.now()  # get current date and time
-date_time = now.strftime("%m%d_%H%M")  # format date and time as string
-filename = 'experiment_m{}_alphainc{}_{}.pkl'.format(args.m, args.alpha_inc, date_time)  # create filename with date and time
 
-# Add the meta information to the run
-all_records.append(vars(args))
+def run(N, m, alpha, alpha_inc, test_function, independent,
+        folder,
+        sample_size, shift, naive, lr, seed):
 
-for N in range(args.lower_N, args.upper_N + 1):
     record = {}
-    record['N'] = N
-    # record['Optim'] = 'PEDS'
-    # record['Sample size'] = sample_size
-    # record['Alpha'] = alpha
-    # record['Projector'] = 'Mean field'
-    record['Notes'] = "Increase alpha with 0.1 with each step; move the center of the rastrian function"
-    # record['Rastrigin_A'] = A
 
-    # naive = record['Optim'] == 'naive'
-    model_class = partial(Rastrigin, N=N, m=args.m, A=args.A, 
-                          alpha=args.alpha, alpha_inc=args.alpha_inc, 
-                          shift=args.shift, naive=args.naive)
-    optimizer_class = partial(SGD, lr=args.lr)
+    filename = f'N_{N}_m_{m}_alpha_{alpha}_inc_{alpha_inc}.pkl'
+    subfolder = f"{test_function}_indep_{independent}"
+    concat_folder = os.path.join(folder, subfolder)
+    if not os.path.exists(concat_folder):
+        os.mkdir(concat_folder)
+
+    file_path = os.path.join(concat_folder, filename)
+
+
+    # Add the meta information to the run
+    record.update(vars(args))
+
+    test_function_class = eval(test_function)
+    model_class = partial(test_function_class, N=N, m=m,
+                            alpha=alpha, alpha_inc=alpha_inc, 
+                            shift=shift, naive=naive,
+                            independent=independent)
+    optimizer_class = partial(SGD, lr=lr)
 
     result = experiment(model_class, optimizer_class, 
-                        args.sample_size, np.array([0 for _ in range(args.m)]),
-                        seed_value=args.seed)
+                        sample_size, np.array([0 for _ in range(m)]),
+                        seed_value=seed)
 
     record.update(result)
-    all_records.append(record)
 
 
     # Use 'with open' to ensure the file gets closed after writing
     # Save data to a pickle file
-    with open(filename, 'wb') as f:
-        pickle.dump(all_records, f)
+    with open(file_path, 'wb') as f:
+        pickle.dump(record, f)
 
     # with open('data.pkl', 'rb') as f:
     #     data = pickle.load(f)
+
+def run_exp(config):
+    list_key = []
+    list_length = []
+    base_config = {}
+
+    for k, v in config.items():
+        if isinstance(v, list):
+            list_key.append(k)
+            list_length.append(len(v))
+        else:
+            base_config[k] = v
+    
+    cum_length = [1]
+    for length in list_length:
+        cum_length.append(cum_length[-1] * length)
+
+
+    for i in range(np.prod(list_length)):
+        con = base_config.copy()
+
+        for j in range(len(list_key)):
+            index = i // cum_length[j] % list_length[j]
+            key = list_key[j]
+            con[key] = config[key][index]
+        run(**con)
+
+
+for k, v in vars(args).items():
+    if v is not None:
+        yaml_config[k] = v
+yaml_config.pop('yaml_config_path')
+
+run_exp(yaml_config)
+# print(yaml_config)
+
+
+    
+
+    
+
 
 

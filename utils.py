@@ -10,9 +10,6 @@ from joblib import Parallel, delayed
 import multiprocessing
 import random
 import time
-
-from algo import MultipleCopy, Rastrigin
-
 from tqdm import tqdm
 
 import argparse
@@ -20,26 +17,31 @@ import argparse
 def parse_args():
     parser = argparse.ArgumentParser(description='Optimize using PEDS method')
 
+
     # Add arguments to the parser
     parser.add_argument('--naive', action='store_true')
+    parser.add_argument('--independent', action='store_true')
     
     parser.add_argument('--alpha', type=float, default=1)
     parser.add_argument('--alpha-inc', type=float, default=0)
     
     parser.add_argument('-m', type=int)
-    parser.add_argument('--lower-N', type=int, default=1)
-    parser.add_argument('--upper-N', type=int, help="The largest N to test, inclusively", default=10)
+    parser.add_argument('--N', type=int)
 
     parser.add_argument('--lr', type=float, default=1e-4)
     parser.add_argument('--sample-size', '-sz', type=float, default=1e4)
 
 
-    parser.add_argument('-A', type=int, default=3)
+    parser.add_argument('--test-function', type=str, default='Rastrigin')
+    # parser.add_argument('-A', type=int, default=3) # TODO: Get rid of this
     parser.add_argument('--shift', type=float, default=0)
 
     parser.add_argument('--seed', type=int, default=42)
 
     parser.add_argument('--debug', action='store_true')
+
+    # Saving
+    parser.add_argument('--folder', type=str, required=True)
 
     args = parser.parse_args()
 
@@ -66,7 +68,7 @@ def run_optimize(model_class, optimizer_class, minimal_step=1e-4, save_traj = Fa
 
 
     # Optimize the objective function
-    for _ in range(int(1e10)):
+    for _ in range(int(1e5)): #TODO: don't hard code max_iter
         # with torch.profiler.profile(record_shapes=True) as prof:
             # This is a numpy matrix of shape N x m
             x = model.x.detach().numpy().copy()
@@ -134,13 +136,16 @@ def experiment(
 
     
     results = Parallel(n_jobs=num_cores) \
-        (delayed(run_optimize)(model_class, optimizer_class, save_traj=save_traj) for _ in range(sample_size))
+        (delayed(run_optimize)(model_class, optimizer_class, \
+                               save_traj=save_traj, verbose=debug) \
+                                for _ in range(sample_size))
 
 
     # results = [(run_optimize)(model_class, optimizer_class)]
 
     last_x = [res[0] for res in results]
     losses = [res[1] for res in results]
+    list_y_traj = [res[3] for res in results]
 
     # find one non-converging trajectory?
     if save_traj:
@@ -164,7 +169,7 @@ def experiment(
 
     return {
         # 'list_x_traj': list_x_traj,
-        # 'list_y_traj': list_y_traj,
+        'list_y_traj': list_y_traj[:100],
         'last_x': last_x,
         # 'losses': losses,
         'mean_loss': mean_loss,
