@@ -1,4 +1,15 @@
 import torch
+import numpy as np
+import matplotlib.pyplot as plt
+
+m = 10000
+N = 100
+X = np.random.uniform(0, 1, size=(m, N)).mean(axis=1)
+plt.hist(X)
+plt.show()
+
+exit(0)
+
 
 # Enable the profiler
 with torch.profiler.profile(record_shapes=True) as prof:

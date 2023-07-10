@@ -7,11 +7,25 @@ from matplotlib.animation import FuncAnimation, writers
 
 
 class PEDS_Model(nn.Module):
-    upper, lower = 2, -2
+    upper, lower = 10, -10
+    init_noise = 10
 
     def __init__(self, N, m, alpha, alpha_inc, shift=0, independent=False, naive=False):
         super(PEDS_Model, self).__init__()
-        self.x = nn.Parameter(self.lower + torch.rand(N, m) * (self.upper - self.lower))
+        center = (self.lower + torch.rand(m) * (self.upper - self.lower))
+        self.x = nn.Parameter(center + torch.randn(N, m) * self.init_noise )
+
+        # Define the ranges for x and y
+        x_range = torch.linspace(-5, 5, 5)
+        y_range = torch.linspace(-5, 5, 5)
+
+        # Create 2D grid of coordinates
+        x, y = torch.meshgrid(x_range, y_range)
+
+        # Stack and reshape to get (N, 2) shape
+        # grid = torch.stack((x.reshape(-1), y.reshape(-1)), dim=1)
+        # self.x = nn.Parameter(center + grid )
+
         self.shift = shift
 
         self.m = m
@@ -39,13 +53,19 @@ class PEDS_Model(nn.Module):
                 projected_grad = self.x.grad
             else:
                 projected_grad = torch.matmul(projector, self.x.grad)
+            
+            if torch.norm(projected_grad, p=2) < 1:
+                self.alpha += self.alpha_inc
+            else:
+                self.alpha = 0
+            
 
             mean = torch.mean(self.x, dim=0)
             attraction = self.alpha * (self.x - mean)
             # attraction = self.alpha * torch.matmul((self.I - projector), self.x)
 
-            self.x.grad = (projected_grad + attraction)
-        self.alpha += self.alpha_inc
+            self.x.grad = (projected_grad + attraction) 
+        # self.alpha += self.alpha_inc
 
 class Rastrigin(PEDS_Model):
     def __init__(self, *args, **kwargs):
@@ -62,8 +82,11 @@ class Ackley(PEDS_Model):
         super(Ackley, self).__init__(*args, **kwargs)
 
     def forward(self):
-        term1 = -self.a * torch.exp(-self.b * torch.sqrt(torch.mean(self.x**2, dim=1)))
-        term2 = -torch.exp(torch.mean(torch.cos(self.c * self.x), dim=1))
+        # Compensate the shift
+        x = self.x - self.shift
+
+        term1 = -self.a * torch.exp(-self.b * torch.sqrt(torch.mean(x**2, dim=1)))
+        term2 = -torch.exp(torch.mean(torch.cos(self.c * x), dim=1))
         y = term1 + term2 + self.a + torch.e 
         if torch.isnan(y).any():
             print("There is nan in the function output. Check it!")

@@ -29,6 +29,7 @@ def parse_args():
     parser.add_argument("--folder", type=str, required=True)
     parser.add_argument("--m", type=int)
 
+    parser.add_argument("--debug", action='store_true')
     return parser.parse_args()
 
 args = parse_args()
@@ -42,7 +43,8 @@ with open(args.yaml_config_path, "r") as infile:
 
 def run(N, m, alpha, alpha_inc, test_function, independent,
         folder,
-        sample_size, shift, naive, lr, seed):
+        sample_size, shift, naive, lr, momentum, seed,
+        debug):
 
     record = {}
 
@@ -63,13 +65,18 @@ def run(N, m, alpha, alpha_inc, test_function, independent,
                             alpha=alpha, alpha_inc=alpha_inc, 
                             shift=shift, naive=naive,
                             independent=independent)
-    optimizer_class = partial(SGD, lr=lr)
+    optimizer_class = partial(SGD, lr=lr, momentum=momentum)
 
     result = experiment(model_class, optimizer_class, 
-                        sample_size, np.array([0 for _ in range(m)]),
-                        seed_value=seed)
+                        sample_size, np.array([shift for _ in range(m)]),
+                        seed_value=seed, debug=debug)
 
     record.update(result)
+
+    if debug:
+        file_path = 'sample_run_N2.pkl'
+        # from IPython import embed
+        # embed() or exit(0)
 
 
     # Use 'with open' to ensure the file gets closed after writing
@@ -96,6 +103,9 @@ def run_exp(config):
     for length in list_length:
         cum_length.append(cum_length[-1] * length)
 
+    if not list_length:
+        run(**base_config)
+        exit(0)
 
     for i in range(np.prod(list_length)):
         con = base_config.copy()

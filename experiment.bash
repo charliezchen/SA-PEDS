@@ -2,19 +2,23 @@
 
 # Define the list of arguments
 mlist=(1 10 20 30) # 40 50 60 70 80 90 100
-test=("Rastrigin" "Ackley")
-flag=("--independent" "")
+mlist=(40 50 60 70)
+# test=("Rastrigin" "Ackley")
+test=("Rastrigin")
+flag=("")
+# flag=("--independent" "")
 
 for m in "${mlist[@]}"; do
     for t in "${test[@]}"; do
         for f in "${flag[@]}"; do
             # job_file=$(mktemp)
-        
+
+# Check how much memory needed #TODO:
 sbatch << EOF
 #!/bin/bash
 #SBATCH --nodes=1
 #SBATCH --job-name=run_cpu_job
-#SBATCH --time=12:00:00
+#SBATCH --time=$m:00:00
 #SBATCH --mem=60GB
 #SBATCH --cpus-per-task=20
 #SBATCH --output=log/%x-%j.out
@@ -29,7 +33,7 @@ singularity exec --nv \
 source /ext3/env.sh
 conda activate torch
 
-python3 optimize_peds.py --yaml_config_path config.yml --folder exp --m $m --test_function $t $f
+python3 optimize_peds.py --yaml_config_path config.yml --folder exp_center_reset_lr --m $m --test_function $t $f
 "
 EOF
 
@@ -42,3 +46,18 @@ EOF
     # sbatch run_experiment_python.slurm "$m" Rastrigin
     # sbatch run_experiment_python.slurm "$m" Ackley
 done
+
+
+exit 0
+
+6h
+
+➜  Rastrigin_indep_False ll | grep m_1_ | wc -l
+22
+➜  Rastrigin_indep_False ll | grep m_10_ | wc -l
+18
+➜  Rastrigin_indep_False ll | grep m_20_ | wc -l
+15
+➜  Rastrigin_indep_False ll | grep m_30_ | wc -l
+alpha_inc: [ 1]
+11

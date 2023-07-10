@@ -41,7 +41,7 @@ def parse_args():
     parser.add_argument('--debug', action='store_true')
 
     # Saving
-    parser.add_argument('--folder', type=str, required=True)
+    # parser.add_argument('--folder', type=str, required=True)
 
     args = parser.parse_args()
 
@@ -58,7 +58,7 @@ def generate_random(upper, lower, shape):
     return lower + torch.rand(shape) * (upper - lower)
 
 
-def run_optimize(model_class, optimizer_class, minimal_step=1e-4, save_traj = False, verbose=False):
+def run_optimize(model_class, optimizer_class, minimal_step=1e-3, maxiter=int(1e5), save_traj = False, verbose=False):
     x_traj = []
     y_traj = []
     last_x, last_y = None, None
@@ -68,7 +68,7 @@ def run_optimize(model_class, optimizer_class, minimal_step=1e-4, save_traj = Fa
 
 
     # Optimize the objective function
-    for _ in range(int(1e5)): #TODO: don't hard code max_iter
+    for iter in range(maxiter): #TODO: don't hard code max_iter
         # with torch.profiler.profile(record_shapes=True) as prof:
             # This is a numpy matrix of shape N x m
             x = model.x.detach().numpy().copy()
@@ -94,8 +94,11 @@ def run_optimize(model_class, optimizer_class, minimal_step=1e-4, save_traj = Fa
 
             if save_traj:
                 x_traj.append(last_x)
-                y_traj.append(model.x.grad.detach().numpy().copy())
+                y_traj.append(last_y)
+                # y_traj.append(model.x.grad.detach().numpy().copy())
 
+            if iter == maxiter - 1:
+                print("Reach max iteration in run_optimize")
         # print(prof.key_averages().table(sort_by="cpu_time_total"))
         # exit(0)
 
@@ -120,7 +123,6 @@ def experiment(
     sample_size,
     optimum,
     tol=0.1,
-    save_traj=False,
     seed_value=42,
     debug=False
 ):
@@ -137,7 +139,7 @@ def experiment(
     
     results = Parallel(n_jobs=num_cores) \
         (delayed(run_optimize)(model_class, optimizer_class, \
-                               save_traj=save_traj, verbose=debug) \
+                               save_traj=debug, verbose=debug) \
                                 for _ in range(sample_size))
 
 
@@ -145,10 +147,11 @@ def experiment(
 
     last_x = [res[0] for res in results]
     losses = [res[1] for res in results]
+    list_x_traj = [res[2] for res in results]
     list_y_traj = [res[3] for res in results]
 
     # find one non-converging trajectory?
-    if save_traj:
+    if False and save_traj:
         y_traj = results[0][3]
         y_traj = [np.linalg.norm(traj, axis=1) for traj in y_traj]
         plt.plot(y_traj)
@@ -168,7 +171,7 @@ def experiment(
     num_succ = [np.min(np.linalg.norm(x_end - optimum, axis=1)) < tol for x_end in last_x]
 
     return {
-        # 'list_x_traj': list_x_traj,
+        'list_x_traj': list_x_traj,
         'list_y_traj': list_y_traj[:100],
         'last_x': last_x,
         # 'losses': losses,

@@ -1,0 +1,1 @@
+rsync -avz greene:~/workspace/am_sure/*.pkl .

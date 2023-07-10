@@ -1,0 +1,21 @@
+---
+# algorithm_param:
+N: 25
+
+alpha: 0
+alpha_inc: 0.1
+
+naive: False
+lr: 0.01
+momentum: 0
+
+# test_function:
+shift: 2
+
+# experiment:
+sample_size: 1
+seed: 2023
+
+
+# independent
+# test_function

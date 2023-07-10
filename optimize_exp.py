@@ -19,13 +19,13 @@ from algo import *
 
 args = parse_args()
 
-N = 2
+N = 100
 
 
 test_function_class = eval(args.test_function)
 model_class = partial(test_function_class, N=N, m=args.m, 
                       alpha=args.alpha, alpha_inc=args.alpha_inc,
-                      independent=args.independent)
+                      independent=args.independent, shift=args.shift)
 
 
 # def f(x):
@@ -41,9 +41,10 @@ model_class = partial(test_function_class, N=N, m=args.m,
 optimizer_class = partial(SGD, lr=args.lr)
 
 result = experiment(model_class, optimizer_class, args.sample_size, 
-                    np.array([0 for _ in range(args.m)]),
+                    np.array([args.shift for _ in range(args.m)]),
                     save_traj=args.debug, debug=args.debug)
-
+from IPython import embed
+embed() or exit(0)
 print(result['success_rate'])
 print(np.mean(result['mean_loss']))
 
