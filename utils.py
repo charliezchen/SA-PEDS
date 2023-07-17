@@ -66,12 +66,17 @@ def run_optimize(model_class, optimizer_class, minimal_step=1e-3, maxiter=int(1e
     model = model_class()
     optimizer = optimizer_class(model.parameters())
 
+    rv = model.rv
+
 
     # Optimize the objective function
     for iter in range(maxiter): #TODO: don't hard code max_iter
         # with torch.profiler.profile(record_shapes=True) as prof:
             # This is a numpy matrix of shape N x m
-            x = model.x.detach().numpy().copy()
+            if rv:
+                x = model.center.detach().numpy().copy()
+            else:
+                x = model.x.detach().numpy().copy()
             if last_x is not None:
                 steps = [np.linalg.norm(x[i]-last_x[i]) for i in range(len(x))]
                 if np.max(steps) < minimal_step:
@@ -168,7 +173,11 @@ def experiment(
     mean_loss = np.mean(losses)
 
     # last_x = [x_traj[-1] for x_traj in list_x_traj]
-    num_succ = [np.min(np.linalg.norm(x_end - optimum, axis=1)) < tol for x_end in last_x]
+
+    if len(last_x[0].shape) > 1:
+        num_succ = [np.min(np.linalg.norm(x_end - optimum, axis=1)) < tol for x_end in last_x]
+    else:
+        num_succ = [np.min(np.linalg.norm(x_end - optimum)) < tol for x_end in last_x]
 
     return {
         'list_x_traj': list_x_traj,

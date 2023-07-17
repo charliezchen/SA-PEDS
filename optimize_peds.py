@@ -41,9 +41,9 @@ with open(args.yaml_config_path, "r") as infile:
     yaml_config = yaml.full_load(infile)
 
 
-def run(N, m, alpha, alpha_inc, test_function, independent,
+def run(N, m, alpha, alpha_inc, rv, test_function, independent,
         folder,
-        sample_size, shift, naive, lr, momentum, seed,
+        sample_size, shift, lr, momentum, seed,
         debug):
 
     record = {}
@@ -63,8 +63,8 @@ def run(N, m, alpha, alpha_inc, test_function, independent,
     test_function_class = eval(test_function)
     model_class = partial(test_function_class, N=N, m=m,
                             alpha=alpha, alpha_inc=alpha_inc, 
-                            shift=shift, naive=naive,
-                            independent=independent)
+                            shift=shift,
+                            independent=independent, rv=rv)
     optimizer_class = partial(SGD, lr=lr, momentum=momentum)
 
     result = experiment(model_class, optimizer_class, 
@@ -74,9 +74,8 @@ def run(N, m, alpha, alpha_inc, test_function, independent,
     record.update(result)
 
     if debug:
-        file_path = 'sample_run_N2.pkl'
-        # from IPython import embed
-        # embed() or exit(0)
+        file_path = 'debug_run.pkl'
+        print("Success rate:", result['success_rate'])
 
 
     # Use 'with open' to ensure the file gets closed after writing

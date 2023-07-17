@@ -3,17 +3,18 @@
 N: 25
 
 alpha: 0
-alpha_inc: 0.1
+alpha_inc: 0.01
+# If set rv to be true, set alpha_inc to be 0.01, otherwise, 0.1
+rv: True
 
-naive: False
 lr: 0.01
 momentum: 0
 
 # test_function:
-shift: 2
+shift: 4
 
 # experiment:
-sample_size: 1
+sample_size: 10
 seed: 2023
 
 

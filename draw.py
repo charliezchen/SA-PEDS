@@ -12,16 +12,16 @@ lower, upper = -4, 8
 samples = 200
 x = np.linspace(lower, upper, samples)
 y = np.linspace(lower, upper, samples)
-
+shift=4
 
 # Create 2D grid of coordinates
 X, Y = np.meshgrid(x, y)
 
 # Define function f(x, y)
-f = lambda x: 3 + (x-2)**2 - 3 * np.cos(2 * np.pi * (x-2))
+f = lambda x: 3 + (x-shift)**2 - 3 * np.cos(2 * np.pi * (x-shift))
 Z = f(X) + f(Y)
 
-hist_file = 'sample_run_N2.pkl'
+hist_file = 'debug_run.pkl'
 with open(hist_file, 'rb') as f:
     hist = pickle.load(f)
 
@@ -45,7 +45,7 @@ frame = min(l, 1000)
 one_traj = one_traj[::int(l/frame)][:frame]
 
 
-# print(one_traj[-1])
+print(one_traj[-1])
 # exit(0)
 
 
@@ -54,6 +54,10 @@ one_traj = one_traj[::int(l/frame)][:frame]
 for i in range(frame):
     # Clear the last point
     t = one_traj[i]
+
+    if len(t.shape) < 2:
+        t = [t]
+
     t1 = [i[0] for i in t]
     t2 = [i[1] for i in t]
 
@@ -61,9 +65,10 @@ for i in range(frame):
         dot.remove()
     dot = plt.scatter(t1, t2, color='red')
 
-    plt.savefig(f'frames/frame_{i:04d}.png')
+    # plt.savefig(f'frames/frame_{i:04d}.png')
 
-    # plt.pause(0.01)  # Pause to create animation effect
+
+    plt.pause(0.01)  # Pause to create animation effect
 
 
 

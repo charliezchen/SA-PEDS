@@ -3,11 +3,12 @@ import matplotlib.pyplot as plt
 import pickle
 import os
 import re
+import sys
 
-m = 1
+m = int(sys.argv[1])
 alpha_inc = 0.1
 
-dir = 'exp_center_reset/Rastrigin_indep_False'
+dir = 'exp_center_reset_lr/Rastrigin_indep_False'
 
 all_pkl = os.listdir(dir)
 
@@ -16,7 +17,7 @@ all_pkl = os.listdir(dir)
 matches = []
 Ns = []
 for s in all_pkl:
-    match = re.match(r"N_(\d+)_m_20_.*inc_0.1.pkl", s)
+    match = re.match(fr"N_(\d+)_m_{m}_.*inc_0.1.pkl", s)
     if match:
         matches.append((s))
         Ns.append(int(match.group(1)))
@@ -35,6 +36,7 @@ for pkl in matches:
         succ.append(res['success_rate'])
 
 pairs = sorted(zip(Ns, succ))
+
 Ns_sorted, succ_sorted = zip(*pairs)
 
 # plot the data
@@ -49,7 +51,7 @@ plt.legend()
 plt.xlabel('N')
 plt.ylabel('Success rate')
 plt.title('Success rate vs N')
-plt.savefig('m20.png')
+plt.savefig(f'm{m}.png')
 
-from IPython import embed
-embed() or exit(0)
+# from IPython import embed
+# embed() or exit(0)
