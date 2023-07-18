@@ -58,7 +58,7 @@ def generate_random(upper, lower, shape):
     return lower + torch.rand(shape) * (upper - lower)
 
 
-def run_optimize(model_class, optimizer_class, minimal_step=1e-3, maxiter=int(1e5), save_traj = False, verbose=False):
+def run_optimize(model_class, optimizer_class, minimal_step=1e-3, maxiter=int(8e3), save_traj = False, verbose=False):
     x_traj = []
     y_traj = []
     last_x, last_y = None, None
@@ -67,6 +67,9 @@ def run_optimize(model_class, optimizer_class, minimal_step=1e-3, maxiter=int(1e
     optimizer = optimizer_class(model.parameters())
 
     rv = model.rv
+
+    if rv:
+        std = []
 
 
     # Optimize the objective function
@@ -79,8 +82,17 @@ def run_optimize(model_class, optimizer_class, minimal_step=1e-3, maxiter=int(1e
                 x = model.x.detach().numpy().copy()
             if last_x is not None:
                 steps = [np.linalg.norm(x[i]-last_x[i]) for i in range(len(x))]
-                if np.max(steps) < minimal_step:
-                    if verbose: print("The maximum step is:", np.max(steps), "\nQuit early")
+                if np.max(steps) < minimal_step and model.var < 0.1:
+                    if verbose: 
+                        print("The maximum step is:", np.max(steps), "\nQuit early")
+                        print("Alpha is", model.var)
+                        if rv:
+                            test = []
+                            for _ in range(100):
+                                model()
+                                test.append(model.center.grad)
+                            print("The variance is:", torch.stack(test).var(dim=0))
+                    
                     break
             last_x = x
 
@@ -96,18 +108,29 @@ def run_optimize(model_class, optimizer_class, minimal_step=1e-3, maxiter=int(1e
             
             model.peds_step()
             optimizer.step()
+            model.post_step(optimizer)
+            
 
             if save_traj:
                 x_traj.append(last_x)
                 y_traj.append(last_y)
                 # y_traj.append(model.x.grad.detach().numpy().copy())
+                if rv:
+                    std.append(model.var)
 
             if iter == maxiter - 1:
                 print("Reach max iteration in run_optimize")
         # print(prof.key_averages().table(sort_by="cpu_time_total"))
         # exit(0)
 
-    return last_x, last_y, x_traj, y_traj
+    return {
+        'last_x': last_x,
+        'last_y': last_y,
+        'x_traj': x_traj,
+        'y_traj': y_traj,
+        'std': std if rv else 0,
+    }
+
 
 def set_seed(seed_value):
     random.seed(seed_value)
@@ -126,11 +149,13 @@ def experiment(
     model_class,
     optimizer_class,
     sample_size,
-    optimum,
+    # optimum,
     tol=0.1,
     seed_value=42,
     debug=False
 ):
+    optimum = model_class().optimal().numpy()
+
     start_time = time.time()
 
     set_seed(seed_value)
@@ -149,11 +174,10 @@ def experiment(
 
 
     # results = [(run_optimize)(model_class, optimizer_class)]
-
-    last_x = [res[0] for res in results]
-    losses = [res[1] for res in results]
-    list_x_traj = [res[2] for res in results]
-    list_y_traj = [res[3] for res in results]
+    ret_dict = {}
+    for k, _ in results[0].items():
+        ret_dict[k] = [res[k] for res in results]
+    
 
     # find one non-converging trajectory?
     if False and save_traj:
@@ -170,18 +194,20 @@ def experiment(
                 embed() or exit(0)
 
     # losses = [y_traj[-1] for y_traj in list_y_traj]
-    mean_loss = np.mean(losses)
+    mean_loss = np.mean(ret_dict['last_y'])
 
-    # last_x = [x_traj[-1] for x_traj in list_x_traj]
+    last_x = ret_dict['last_x']
 
     if len(last_x[0].shape) > 1:
         num_succ = [np.min(np.linalg.norm(x_end - optimum, axis=1)) < tol for x_end in last_x]
     else:
         num_succ = [np.min(np.linalg.norm(x_end - optimum)) < tol for x_end in last_x]
 
+
     return {
-        'list_x_traj': list_x_traj,
-        'list_y_traj': list_y_traj[:100],
+        'list_x_traj': ret_dict['x_traj'] ,
+        'list_y_traj': ret_dict['y_traj'] [:100],
+        'std': ret_dict['std'],
         'last_x': last_x,
         # 'losses': losses,
         'mean_loss': mean_loss,

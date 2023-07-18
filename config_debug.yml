@@ -1,6 +1,6 @@
 ---
 # algorithm_param:
-N: 25
+N: 10000
 
 alpha: 0
 alpha_inc: 0.01
@@ -14,8 +14,8 @@ momentum: 0
 shift: 4
 
 # experiment:
-sample_size: 10
-seed: 2023
+sample_size: 1
+seed: 20232
 
 
 # independent

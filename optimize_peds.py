@@ -65,10 +65,10 @@ def run(N, m, alpha, alpha_inc, rv, test_function, independent,
                             alpha=alpha, alpha_inc=alpha_inc, 
                             shift=shift,
                             independent=independent, rv=rv)
-    optimizer_class = partial(SGD, lr=lr, momentum=momentum)
+    optimizer_class = partial(torch.optim.Adam, lr=lr)
 
     result = experiment(model_class, optimizer_class, 
-                        sample_size, np.array([shift for _ in range(m)]),
+                        sample_size,
                         seed_value=seed, debug=debug)
 
     record.update(result)
