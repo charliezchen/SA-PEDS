@@ -15,76 +15,98 @@ from datetime import datetime
 from utils import *
 
 from algo import *
+import argparse
 
 import os
 import yaml
+import pprint
+import copy
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Optimize using PEDS method')
 
-    parser.add_argument("--yaml_config_path", type=str, required=True)
-    parser.add_argument("--independent", action='store_true')
+    # parser.add_argument("--yaml_config_path", type=str, required=True)
 
-    parser.add_argument("--test_function", type=str, required=True)
-    parser.add_argument("--folder", type=str, required=True)
-    parser.add_argument("--m", type=int)
+    optim = parser.add_argument_group("optimizer_config")
+    model = parser.add_argument_group("model_config")
+    exp = parser.add_argument_group("experiment_config")
 
-    parser.add_argument("--debug", action='store_true')
-    return parser.parse_args()
+    optim.add_argument("--class", type=str, required=True)
+    optim.add_argument("--lr", type=float, default=0.01)
 
-args = parse_args()
+    model.add_argument("--m", type=int, required=True)
+    model.add_argument("--N", type=int, required=True)
+    model.add_argument("--alpha", type=float, required=True)
+    model.add_argument("--alpha-inc", type=float, required=True)
+    model.add_argument("--rv", action='store_true')
+    model.add_argument("--upper", type=int, default=10)
+    model.add_argument("--lower", type=int, default=-10)
+    model.add_argument("--init_noise", type=int, default=10)
+    model.add_argument("--shift", type=int, default=2)
+    model.add_argument("--independent", action='store_true')
 
-if not os.path.exists(args.folder):
-    os.mkdir(args.folder)
+    exp.add_argument("--debug", action='store_true')
+    exp.add_argument("--test_function", type=str, required=True)
+    exp.add_argument("--sample_size", type=int, default=1000)
+    exp.add_argument("--seed", type=int, default=2023)
 
-with open(args.yaml_config_path, "r") as infile:
-    yaml_config = yaml.full_load(infile)
+    args = parser.parse_args()
 
-
-def run(N, m, alpha, alpha_inc, rv, test_function, independent,
-        folder,
-        sample_size, shift, lr, momentum, seed,
-        debug):
-
-    record = {}
-
-    filename = f'N_{N}_m_{m}_alpha_{alpha}_inc_{alpha_inc}.pkl'
-    subfolder = f"{test_function}_indep_{independent}"
-    concat_folder = os.path.join(folder, subfolder)
-    if not os.path.exists(concat_folder):
-        os.mkdir(concat_folder)
-
-    file_path = os.path.join(concat_folder, filename)
-
-
-    # Add the meta information to the run
-    record.update(vars(args))
-
-    test_function_class = eval(test_function)
-    model_class = partial(test_function_class, N=N, m=m,
-                            alpha=alpha, alpha_inc=alpha_inc, 
-                            shift=shift,
-                            independent=independent, rv=rv)
-    optimizer_class = partial(torch.optim.Adam, lr=lr)
-
-    result = experiment(model_class, optimizer_class, 
-                        sample_size,
-                        seed_value=seed, debug=debug)
-
-    record.update(result)
-
-    if debug:
-        file_path = 'debug_run.pkl'
-        print("Success rate:", result['success_rate'])
+    groups = [optim, model, exp]
+    group_dict = []
+    for g in groups:
+        dest_list = set([action.dest for action in g._group_actions])
+        title = g.title
+        group_dict.append([dest_list, title])
+    arg_dict = {}
+    for k, v in vars(args).items():
+        found = False
+        for dest_list, title in group_dict:
+            if k in dest_list:
+                if title not in arg_dict:
+                    arg_dict[title] = {}
+                arg_dict[title][k] = v
+                found = True
+                break
+        if not found: arg_dict[k] = v
 
 
-    # Use 'with open' to ensure the file gets closed after writing
-    # Save data to a pickle file
-    with open(file_path, 'wb') as f:
-        pickle.dump(record, f)
+    return arg_dict
 
-    # with open('data.pkl', 'rb') as f:
-    #     data = pickle.load(f)
+arg_dict = parse_args()
+
+# with open(arg_dict['yaml_config_path'], "r") as infile:
+#     yaml_config = yaml.full_load(infile)
+
+def pretty_print_dict(data):
+    pp = pprint.PrettyPrinter(indent=2)
+    pp.pprint(data)
+
+
+def run(arg_dict):
+    result = copy.deepcopy(arg_dict)
+    optimizer_config = arg_dict['optimizer_config']
+    model_config = arg_dict['model_config']
+    experiment_config = arg_dict['experiment_config']
+
+    test_function_class = eval(experiment_config.pop('test_function'))
+    model_class = partial(test_function_class, **model_config)
+    base_optim_class = eval(optimizer_config.pop('class'))
+    optimizer_class = partial(base_optim_class, **optimizer_config)
+    
+    result['result'] = experiment(model_class, optimizer_class, 
+                        **experiment_config)
+
+    if experiment_config['debug']:
+        with open("debug_run.pkl", "wb") as f:
+            pickle.dump(result, f)
+    
+    result['result'] = {k:v for k,v in result['result'].items() \
+                        if k in ['success_rate', 'mean_loss', \
+                                'mean_iter', 'mean_last_x', 'mean_time']}
+
+    pretty_print_dict(result)
+
 
 def run_exp(config):
     list_key = []
@@ -116,12 +138,21 @@ def run_exp(config):
         run(**con)
 
 
-for k, v in vars(args).items():
-    if v is not None:
-        yaml_config[k] = v
-yaml_config.pop('yaml_config_path')
+# for k, v in arg_dict.items():
+#     if v is not None:
+#         if k in ['N', 'm', 'alpha', 'alpha_inc', 'rv']:
+#             yaml_config['model_config'][k] = v
+#         elif k in ['test_function', 'debug']:
+#             yaml_config['experiment_config'][k] = v
+#         elif k in ['yaml_config_path']:
+#             pass
+#         else:
+#             raise TypeError(f"Don't know the key {k}")
 
-run_exp(yaml_config)
+# pretty_print_dict(arg_dict)
+
+run(arg_dict)
+# run_exp(yaml_config)
 # print(yaml_config)
 
 

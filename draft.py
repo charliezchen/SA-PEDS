@@ -10,6 +10,51 @@ import re
 
 import numpy as np
 import matplotlib.pyplot as plt
+import argparse
+
+import argparse
+import argparse
+
+import argparse
+from collections import defaultdict
+
+f = lambda x: -20 * np.exp(-0.2*np.sqrt(0.5*x**2)) - np.exp(0.5*(np.cos(2*np.pi*x))) + np.e + 20
+x = np.linspace(-5, 5, 200)
+plt.plot(x, f(x))
+plt.show()
+exit(0)
+def group_args(args):
+    groups = defaultdict(dict)
+    for arg, val in vars(args).items():
+        parts = arg.split('_')
+        if len(parts) > 1:
+            groups[parts[0]][parts[1]] = val
+        else:
+            groups[arg] = val
+    return groups
+
+def main():
+    parser = argparse.ArgumentParser()
+    
+    group1 = parser.add_argument_group('group1')
+    group2 = parser.add_argument_group('group2')
+    
+    group1.add_argument("--param1", "--group1_param1", type=int, default=1, help="Param1 in Group1")
+    group1.add_argument("-b", "--group1_param2", type=int, default=2, help="Param2 in Group1")
+    
+    group2.add_argument("-c", "--group2_param1", type=str, default='a', help="Param1 in Group2")
+    group2.add_argument("-d", "--group2_param2", type=str, default='b', help="Param2 in Group2")
+    
+    args = parser.parse_args()
+
+    grouped_args = group_args(args)
+    print(grouped_args)
+
+if __name__ == "__main__":
+    main()
+
+
+exit(0)
 
 # Generate x, y coordinates
 lower, upper = -100, 100

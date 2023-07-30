@@ -12,55 +12,10 @@ import random
 import time
 from tqdm import tqdm
 
-import argparse
-
-def parse_args():
-    parser = argparse.ArgumentParser(description='Optimize using PEDS method')
 
 
-    # Add arguments to the parser
-    parser.add_argument('--naive', action='store_true')
-    parser.add_argument('--independent', action='store_true')
-    
-    parser.add_argument('--alpha', type=float, default=1)
-    parser.add_argument('--alpha-inc', type=float, default=0)
-    
-    parser.add_argument('-m', type=int)
-    parser.add_argument('--N', type=int)
-
-    parser.add_argument('--lr', type=float, default=1e-4)
-    parser.add_argument('--sample-size', '-sz', type=float, default=1e4)
-
-
-    parser.add_argument('--test-function', type=str, default='Rastrigin')
-    # parser.add_argument('-A', type=int, default=3) # TODO: Get rid of this
-    parser.add_argument('--shift', type=float, default=0)
-
-    parser.add_argument('--seed', type=int, default=42)
-
-    parser.add_argument('--debug', action='store_true')
-
-    # Saving
-    # parser.add_argument('--folder', type=str, required=True)
-
-    args = parser.parse_args()
-
-    args.sample_size = int(args.sample_size)
-    return args
-
-# Input should be a torch tensor
-def rastrigin_function(x, A):
-    # broadcast over the last dimension
-    return torch.sum(A + x ** 2 - A * torch.cos(2 * torch.pi * x), dim=-1)
-
-
-def generate_random(upper, lower, shape):
-    return lower + torch.rand(shape) * (upper - lower)
-
-
-def run_optimize(model_class, optimizer_class, minimal_step=1e-3, maxiter=int(8e3), save_traj = False, verbose=False):
-    x_traj = []
-    y_traj = []
+def run_optimize(model_class, optimizer_class, minimal_step=1e-3, maxiter=int(1e3), save_traj = False, verbose=False):
+    x_traj, y_traj = [], []
     last_x, last_y = None, None
 
     model = model_class()
@@ -68,31 +23,22 @@ def run_optimize(model_class, optimizer_class, minimal_step=1e-3, maxiter=int(8e
 
     rv = model.rv
 
-    if rv:
-        std = []
+    std = []
+    SNR_ratio = []
 
 
+    iter = 0
     # Optimize the objective function
-    for iter in range(maxiter): #TODO: don't hard code max_iter
+    while iter < maxiter:
         # with torch.profiler.profile(record_shapes=True) as prof:
-            # This is a numpy matrix of shape N x m
             if rv:
                 x = model.center.detach().numpy().copy()
             else:
                 x = model.x.detach().numpy().copy()
+            # Stopping condition
             if last_x is not None:
                 steps = [np.linalg.norm(x[i]-last_x[i]) for i in range(len(x))]
                 if np.max(steps) < minimal_step and model.var < 0.1:
-                    if verbose: 
-                        print("The maximum step is:", np.max(steps), "\nQuit early")
-                        print("Alpha is", model.var)
-                        if rv:
-                            test = []
-                            for _ in range(100):
-                                model()
-                                test.append(model.center.grad)
-                            print("The variance is:", torch.stack(test).var(dim=0))
-                    
                     break
             last_x = x
 
@@ -115,11 +61,11 @@ def run_optimize(model_class, optimizer_class, minimal_step=1e-3, maxiter=int(8e
                 x_traj.append(last_x)
                 y_traj.append(last_y)
                 # y_traj.append(model.x.grad.detach().numpy().copy())
-                if rv:
-                    std.append(model.var)
+                std.append(model.var)
+                SNR_ratio.append(model.snr)
+            
+            iter += 1
 
-            if iter == maxiter - 1:
-                print("Reach max iteration in run_optimize")
         # print(prof.key_averages().table(sort_by="cpu_time_total"))
         # exit(0)
 
@@ -128,7 +74,9 @@ def run_optimize(model_class, optimizer_class, minimal_step=1e-3, maxiter=int(8e
         'last_y': last_y,
         'x_traj': x_traj,
         'y_traj': y_traj,
-        'std': std if rv else 0,
+        'std': std,
+        'snr': SNR_ratio,
+        'iter': iter
     }
 
 
@@ -150,27 +98,27 @@ def experiment(
     optimizer_class,
     sample_size,
     # optimum,
-    tol=0.1,
-    seed_value=42,
+    tol=0.5,
+    seed=42,
     debug=False
 ):
     optimum = model_class().optimal().numpy()
 
     start_time = time.time()
 
-    set_seed(seed_value)
+    set_seed(seed)
 
     # The number of threads is equalt to the number of cores
-    if not debug:
-        num_cores = multiprocessing.cpu_count()
-    else:
-        num_cores = 1
+    num_cores = multiprocessing.cpu_count()
 
-    
-    results = Parallel(n_jobs=num_cores) \
-        (delayed(run_optimize)(model_class, optimizer_class, \
-                               save_traj=debug, verbose=debug) \
-                                for _ in range(sample_size))
+    if not debug:
+        results = Parallel(n_jobs=num_cores) \
+            (delayed(run_optimize)(model_class, optimizer_class, \
+                                save_traj=debug, verbose=debug) \
+                                    for _ in range(sample_size))
+    else:
+        results = [run_optimize(model_class, optimizer_class, \
+                                save_traj=debug, verbose=debug)]
 
 
     # results = [(run_optimize)(model_class, optimizer_class)]
@@ -178,42 +126,35 @@ def experiment(
     for k, _ in results[0].items():
         ret_dict[k] = [res[k] for res in results]
     
-
-    # find one non-converging trajectory?
-    if False and save_traj:
-        y_traj = results[0][3]
-        y_traj = [np.linalg.norm(traj, axis=1) for traj in y_traj]
-        plt.plot(y_traj)
-        plt.show()
-        from IPython import embed
-        embed() or exit(0)
-        for res in results:
-            x_traj = res[2]
-            if len(x_traj) > 1e4:
-                from IPython import embed
-                embed() or exit(0)
-
     # losses = [y_traj[-1] for y_traj in list_y_traj]
     mean_loss = np.mean(ret_dict['last_y'])
 
     last_x = ret_dict['last_x']
 
+    # The variable of interrest can either be 1-D (center) or 2-D (copies)
     if len(last_x[0].shape) > 1:
         num_succ = [np.min(np.linalg.norm(x_end - optimum, axis=1)) < tol for x_end in last_x]
+        last_x = [np.mean(x, axis=0) for x in last_x]
     else:
         num_succ = [np.min(np.linalg.norm(x_end - optimum)) < tol for x_end in last_x]
 
+    mean_last_x = np.stack(last_x).mean(0)
 
     return {
         'list_x_traj': ret_dict['x_traj'] ,
         'list_y_traj': ret_dict['y_traj'] [:100],
         'std': ret_dict['std'],
+        'mean_iter': np.mean(ret_dict['iter']),
+        'snr': ret_dict['snr'],
+        'mean_last_x': mean_last_x,
         'last_x': last_x,
         # 'losses': losses,
         'mean_loss': mean_loss,
         # 'num_succ': num_succ,
         'success_rate': sum(num_succ)/sample_size,
         # 'seed_value': seed_value,
-        'total_time': time.time() - start_time
+        'total_time': time.time() - start_time,
+        'mean_time': np.mean(time.time() - start_time)
+
     }
 

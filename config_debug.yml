@@ -1,6 +1,6 @@
 ---
 # algorithm_param:
-N: 10000
+N: 25
 
 alpha: 0
 alpha_inc: 0.01

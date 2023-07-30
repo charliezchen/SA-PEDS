@@ -1,20 +1,23 @@
 ---
 # algorithm_param:
-N: [1, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
-# m: [1, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
-alpha: [0]
-alpha_inc: [0.1, 1]
 
-lr: 0.01
-momentum: 0
+optimizer_config:
+  class: "torch.optim.Adam"
+  lr: 0.01
+
+model_config:
+  upper: 5
+  lower: -5
+  init_noise: 30
+  shift: 2
+  independent: False
 
 
-# test_function:
-shift: 2
 
 # experiment:
-sample_size: 10000
-seed: 2023
+experiment_config:
+  sample_size: 1000
+  seed: 2023
 
 
 # independent

@@ -5,24 +5,21 @@ import matplotlib.pyplot as plt
 from functools import partial
 from matplotlib.animation import FuncAnimation, writers
 from torch.distributions import MultivariateNormal
+from abc import abstractmethod
 
 
 class PEDS_Model(nn.Module):
-    upper, lower = -5, 5
-    init_noise = 30
-
-    def __init__(self, N, m, alpha, alpha_inc, shift=0, independent=False, rv=False):
+    def __init__(self, N, m, alpha, alpha_inc, upper, lower,
+                 init_noise, shift=0, independent=False, rv=False):
         super(PEDS_Model, self).__init__()
-        center = (self.lower + torch.rand(m) * (self.upper - self.lower))
-        # mvn = MultivariateNormal(torch.zeros(m), self.init_noise * torch.eye(m))
+        center = (lower + torch.rand(m) * (upper - lower))
 
         if rv:
             self.center = nn.Parameter(center)
-            self.var = self.init_noise
+            self.var = init_noise
         else:
-            self.x = nn.Parameter(center + torch.randn(N, m) * self.init_noise)
-        
-        
+            self.x = nn.Parameter(center + torch.randn(N, m) * init_noise)
+            self.var = -1
 
         self.shift = shift
 
@@ -32,96 +29,78 @@ class PEDS_Model(nn.Module):
         self.alpha_inc = alpha_inc
         self.rv = rv
 
-
         self.independent = independent
+        if self.independent:
+            assert not rv, "Independent is used as baseline. It cannot be SGD."
         self.I = torch.eye(self.N) 
 
     
     # This must be overloaded and called in the overloaded function before anything else
+    @abstractmethod
     def forward(self):
         if self.rv:
-            # TODO: should this scale with N?
+            # White noise independent of dimension and particle index
             noise = torch.randn(self.N, self.m) * self.var
             self.x = self.center + noise
-
-        # raise NotImplemented
+            # self.x.retain_grad()
     
     def peds_step(self):
-        if self.rv:
-            self.last_center = self.center.clone()
+        if not self.rv:
             with torch.no_grad():
-                # Rastrigin
-                # Just divide by N
-                # Set the thres to be 1
+                if self.independent:
+                    projected_grad = self.x.grad
+                    return
+                else:
+                    projected_grad = torch.ones_like(self.x.grad) * torch.mean(self.x.grad, dim=0)
 
-                # Ackley
-                # Use target as 1 and set the thresh as 2
-                # But it is using max. That's strange.
-                #
+                mean = torch.mean(self.x, dim=0)
+                attraction = self.alpha * (self.x - mean)
 
-                # self.center.grad /= self.N
-                # target = 1
-                # self.center.grad *= target/self.center.grad.max()
-                print(self.center.data, end=' ')
-                print(self.center.grad, end=' ')
-                print(self.center.grad.norm(p=2))
-            if torch.norm(self.center.grad, p=2) < 2:
-                print("shrink var", end=' ')
-                print(self.var)
-            self.var -= self.alpha_inc # 1e-2
-            # if self.var < 0:
-            #     self.init_noise //= 2
-            #     self.var = self.init_noise
+                self.x.grad = (projected_grad + attraction) 
+
+        if self.rv:
+            self.var -= self.alpha_inc
             self.var = max(self.var, 0)
-
-            return 
-        
-        with torch.no_grad():
-            if self.independent:
-                projected_grad = self.x.grad
-            else:
-                projected_grad = torch.ones_like(self.x.grad) * torch.mean(self.x.grad, dim=0)
-            
-            if torch.norm(projected_grad, p=2) < 1: # TODO: TO change
-                self.alpha += self.alpha_inc
-            else:
-                self.alpha = 0
-
-            mean = torch.mean(self.x, dim=0)
-            attraction = self.alpha * (self.x - mean)
-
-            self.x.grad = (projected_grad + attraction) 
+        else:
+            self.alpha += self.alpha_inc
     
+    # Now, this function is for debugging purpose only
     def post_step(self, optimizer):
+        # return
         # dist = torch.dist(self.center, self.last_center)
         # print(dist)
         # if dist < 0.01:
         #     self.var -= 0.01
         #     # Clamp var to prevent it from going negative
         #     self.var = max(self.var, 0)
-        return
+        # return
         sum_ratio = 0
         param_count = 0
+        self.snr = torch.tensor(0)
         for group in optimizer.param_groups:
             for p in group['params']:
                 state = optimizer.state[p]
                 if 'exp_avg' in state and 'exp_avg_sq' in state:
                     ratio = state['exp_avg'] / (state['exp_avg_sq'].sqrt() + 1e-8) # Add a small number to avoid division by zero
-                    sum_ratio += torch.mean(ratio) # Assuming you want mean of ratio across elements in a parameter tensor
+                    # sum_ratio = ratio
+                    # sum_ratio += torch.mean(ratio.abs()) # Assuming you want mean of ratio across elements in a parameter tensor
+                    # self.snr = self.x.grad.var(dim=0)
+                    self.snr = ratio.clone()
                     param_count += 1
+        assert param_count <= 1,param_count
+        # with torch.no_grad():
+        #     pass
+        #     self.var -= self.alpha_inc # * torch.exp(-(ratio**2).mean()).numpy()
+        # print(self.var)
+        # from IPython import embed
+        # embed() or exit(0)
+        # exit(0)
+        # average_ratio = sum_ratio / param_count if param_count > 0 else 0
+        # print(average_ratio)
+        return 
 
-        average_ratio = sum_ratio / param_count if param_count > 0 else 0
-        print(average_ratio)
-        if average_ratio.abs() > 0.3:
-            self.var -= self.alpha_inc
-        # if 
 
-        return
-        # adjust learning rate according to average_ratio
-        self.var -= self.alpha_inc * torch.exp(-(average_ratio.abs()))  # Add a small number to avoid division by zero
-        self.var = max(self.var, 0)
-        print(self.var, average_ratio.abs())
-
+    @abstractmethod
     def optimal(self):
         raise NotImplemented
 
@@ -153,8 +132,10 @@ class Ackley(PEDS_Model):
         term2 = -torch.exp(torch.mean(torch.cos(self.c * x), dim=1))
         y = term1 + term2 + self.a + torch.e 
         if torch.isnan(y).any():
-            print("There is nan in the function output. Check it!")
-            exit(0)
+            print("[WARNING]: There is nan in the function output. Check it!")
+            # from IPython import embed
+            # embed() or exit(0)
+            # exit(0)
         return y
 
     def optimal(self):
@@ -162,7 +143,7 @@ class Ackley(PEDS_Model):
 
 class Rosenbrock(PEDS_Model):
     def __init__(self, *args, **kwargs):
-        self.a, self.b = 1, 100
+        self.a, self.b = 1, 100 # TODO: pass in arguments
         super(Rosenbrock, self).__init__(*args, **kwargs)
 
     def forward(self):
@@ -176,4 +157,4 @@ class Rosenbrock(PEDS_Model):
 
 
     def optimal(self):
-        return torch.tensor([self.a - self.shift, self.a**2 - self.shift])
+        return torch.tensor([self.a + self.shift, self.a**2 + self.shift])
